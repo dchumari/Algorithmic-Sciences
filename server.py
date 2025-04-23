@@ -1,0 +1,47 @@
+import socket
+import threading
+from typing import Optional
+from config_parser import parse_config
+from search_handler import SearchHandler
+from security import enable_ssl
+
+class Server:
+    def __init__(self, host: str, port: int, ssl_enabled: bool):
+        self.host = host
+        self.port = port
+        self.ssl_enabled = ssl_enabled
+        self.config = parse_config()
+        self.search_handler = SearchHandler(self.config['linuxpath'], self.config['REREAD_ON_QUERY'])
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    def start(self):
+        self.server_socket.bind((self.host, self.port))
+        self.server_socket.listen(100)
+        print(f"Server listening on {self.host}:{self.port}")
+        while True:
+            client_socket, client_address = self.server_socket.accept()
+            threading.Thread(target=self.handle_client, args=(client_socket, client_address)).start()
+
+    def handle_client(self, client_socket: socket.socket, client_address: tuple):
+        try:
+            payload = client_socket.recv(1024).decode('utf-8').strip('\x00')
+            query = payload.strip()
+            print(f"DEBUG: Received query '{query}' from {client_address}")
+
+            result = self.search_handler.search(query)
+            response = f"{result}\n"
+            client_socket.sendall(response.encode('utf-8'))
+        except Exception as e:
+            print(f"DEBUG: Error handling client {client_address}: {e}")
+        finally:
+            client_socket.close()
+
+if __name__ == "__main__":
+    HOST = "0.0.0.0"
+    PORT = 44445
+    SSL_ENABLED = False  # Can be overridden by config
+    server = Server(HOST, PORT, SSL_ENABLED)
+    if SSL_ENABLED:
+        enable_ssl(server.server_socket)
+    server.start()
