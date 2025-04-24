@@ -10,3 +10,10 @@ def test_string_exists(handler):
 
 def test_string_not_found(handler):
     assert handler.search("non_existent_string") == "STRING NOT FOUND"
+
+def test_empty_query(handler):
+    assert handler.search("") == "STRING NOT FOUND"
+
+def test_file_not_found():
+    with pytest.raises(FileNotFoundError):
+        SearchHandler("non_existent_file.txt", reread_on_query=False)

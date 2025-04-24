@@ -71,8 +71,13 @@ Or install it as a daemon using the provided script:
 ```bash
 bash install.sh
 ```
-
 ---
+
+### Generating SSL Certificates
+To create `server.crt` and `server.key`, run:
+```bash
+openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes
+
 
 ## Running the Server
 
@@ -81,6 +86,22 @@ Run the server directly:
 ```bash
 python server.py
 ```
+
+
+---
+
+### **9. Exception Handling**
+Make exception handling more specific.
+
+**Fix:**
+Update `server.py`:
+```python
+except FileNotFoundError as e:
+    logging.error(f"File not found: {e}")
+except ValueError as e:
+    logging.error(f"Invalid input: {e}")
+except Exception as e:
+    logging.error(f"Unexpected error: {e}")
 
 ### Daemon Mode
 Use the `install.sh` script to run the server as a Linux service:
@@ -176,4 +197,7 @@ For questions or feedback, contact:
 - GitHub: [GitHub Profile](https://github.com/dchumari)
 
 ---
+
+
+
 ```
