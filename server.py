@@ -1,62 +1,104 @@
+"""
+Server implementation for handling concurrent TCP connections and searching strings in a file.
+"""
+
 import socket
 import threading
+import time
+import ssl
+import re
 from typing import Optional
-from config_parser import parse_config
-from search_handler import SearchHandler
-# from security import enable_ssl
+import configparser
 import logging
 
-logging.basicConfig(
-    filename='server.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
 
-def enable_ssl(server_socket: socket.socket):
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(certfile="server.crt", keyfile="server.key")
-    return context.wrap_socket(server_socket, server_side=True)
+# Load configuration
+config = configparser.ConfigParser()
+config.read("config.ini")
 
-class Server:
-    def __init__(self, host: str, port: int, ssl_enabled: bool):
-        self.host = host
-        self.port = port
-        self.ssl_enabled = ssl_enabled
-        self.config = parse_config()
-        self.search_handler = SearchHandler(self.config['linuxpath'], self.config['REREAD_ON_QUERY'])
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if self.ssl_enabled:
-            self.server_socket = enable_ssl(self.server_socket)
+LINUX_PATH = config.get("settings", "linuxpath")
+REREAD_ON_QUERY = config.getboolean("settings", "REREAD_ON_QUERY")
+SSL_ENABLED = config.getboolean("settings", "SSL")
+PORT = config.getint("settings", "port")
+HOST = config.get("settings", "host")
 
-    def start(self):
-        self.server_socket.bind((self.host, self.port))
-        self.server_socket.listen(100)
-        print(f"Server listening on {self.host}:{self.port}")
-        while True:
-            client_socket, client_address = self.server_socket.accept()
-            threading.Thread(target=self.handle_client, args=(client_socket, client_address)).start()
+# Preload file if REREAD_ON_QUERY is False
+if not REREAD_ON_QUERY:
+    with open(LINUX_PATH, "r") as f:
+        lines = set(f.read().splitlines())
 
-    def handle_client(self, client_socket: socket.socket, client_address: tuple):
-        try:
-            start_time = time.time()
-            payload = client_socket.recv(1024).decode('utf-8').strip('\x00')
-            query = payload.strip()
-            logging.info(f"Received query '{query}' from {client_address}")
-            result = self.search_handler.search(query)
-            response = f"{result}\n"
-            client_socket.sendall(response.encode('utf-8'))
-            logging.info(f"Query '{query}' processed in {time.time() - start_time:.4f} seconds")
-        except Exception as e:
-            logging.error(f"Error handling client {client_address}: {e}")
-        finally:
-            client_socket.close()
 
+def handle_client(conn: socket.socket, addr: tuple) -> None:
+    """Handles incoming client connections and processes search queries.
+
+    Args:
+      conn(socket.socket): Client connection socket.
+      addr(tuple): Client IP address and port.
+      conn: socket.socket: 
+      addr: tuple: 
+
+    Returns:
+      : None
+
+    """
+    try:
+        # Receive query
+        data = conn.recv(1024).decode("utf-8").strip("\x00")
+        start_time = time.time()
+
+        # Log request
+        logging.debug(
+            f"Query='{data}' from IP={addr[0]} at {time.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+
+        # Search logic
+        result = "STRING NOT FOUND\n"
+        if REREAD_ON_QUERY:
+            with open(LINUX_PATH, "r") as f:
+                if data in f.read().splitlines():
+                    result = "STRING EXISTS\n"
+        else:
+            if data in lines:
+                result = "STRING EXISTS\n"
+
+        # Send response
+        conn.sendall(result.encode("utf-8"))
+
+        # Log execution time
+        exec_time = (time.time() - start_time) * 1000
+        logging.debug(f"Execution time={exec_time:.2f}ms")
+
+    except FileNotFoundError as e:
+        logging.error(f"File not found - {e}")
+        conn.sendall(b"SERVER ERROR\n")
+    except socket.error as e:
+        logging.error(f"Socket error - {e}")
+        conn.sendall(b"SERVER ERROR\n")
+    except Exception as e:
+        logging.error(f"Unexpected error - {e}")
+        conn.sendall(b"SERVER ERROR\n")
+    finally:
+        conn.close()
+
+
+def start_server() -> None:
+    """Starts the server and listens for incoming connections."""
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind((HOST, PORT))
+    server.listen()
+
+    if SSL_ENABLED:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(certfile="server.crt", keyfile="server.key")
+        server = context.wrap_socket(server, server_side=True)
+
+    logging.info(f"Server listening on {HOST}:{PORT}")
+    while True:
+        conn, addr = server.accept()
+        threading.Thread(target=handle_client, args=(conn, addr)).start()
 
 
 if __name__ == "__main__":
-    HOST = "7;0;1;28;0;9;3;0;"
-    PORT = 44445
-    SSL_ENABLED = False  # Can be overridden by config
-    server = Server(HOST, PORT, SSL_ENABLED)
-    server.start()
+    start_server()

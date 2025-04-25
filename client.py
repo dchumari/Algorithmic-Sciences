@@ -1,15 +1,37 @@
 import socket
-import sys
+import ssl
 
-def query_server(host: str, port: int, query: str):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect((host, port))
-        s.sendall(query.encode('utf-8'))
-        response = s.recv(1024).decode('utf-8')
-        print(response.strip())
+def query_server(host: str, port: int, query: str, use_ssl: bool = False) -> str:
+    """
+
+    Args:
+      host: str: 
+      port: int: 
+      query: str: 
+      use_ssl: bool:  (Default value = False)
+
+    Returns:
+
+    """
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        if use_ssl:
+            context = ssl.create_default_context()
+            sock = context.wrap_socket(sock, server_hostname=host)
+
+        sock.connect((host, port))
+        sock.sendall(query.encode("utf-8"))
+        response = sock.recv(1024).decode("utf-8")
+        return response
+    except Exception as e:
+        return f"ERROR: {e}"
+    finally:
+        sock.close()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("Usage: python client.py <host> <port> <query>")
-        sys.exit(1)
-    query_server(sys.argv[1], int(sys.argv[2]), sys.argv[3])
+    HOST = "135.181.96.160"  # Replace with server IP
+    PORT = 44445         # Replace with server port
+    QUERY = "2;0;23;21;0;22;3;0;"
+    USE_SSL = False       # Set to False if SSL is disabled
+
+    print(query_server(HOST, PORT, QUERY, USE_SSL))

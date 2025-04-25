@@ -1,19 +1,22 @@
-import pytest
-from search_handler import SearchHandler
+import unittest
+from server import search_in_file
 
-@pytest.fixture
-def handler():
-    return SearchHandler("tests/test_data.txt", reread_on_query=False)
+class TestServer(unittest.TestCase):
+    def test_empty_query(self):
+        self.assertEqual(search_in_file(""), "STRING NOT FOUND\n")
 
-def test_string_exists(handler):
-    assert handler.search("test_string") == "STRING EXISTS"
+    def test_valid_query(self):
+        self.assertEqual(search_in_file("test_string"), "STRING EXISTS\n")
 
-def test_string_not_found(handler):
-    assert handler.search("non_existent_string") == "STRING NOT FOUND"
+    def test_oversized_payload(self):
+        with self.assertRaises(ValueError):
+            search_in_file("a" * 1025)
 
-def test_empty_query(handler):
-    assert handler.search("") == "STRING NOT FOUND"
+    def test_null_bytes(self):
+        self.assertEqual(search_in_file("\x00test_string\x00"), "STRING NOT FOUND\n")
 
-def test_file_not_found():
-    with pytest.raises(FileNotFoundError):
-        SearchHandler("non_existent_file.txt", reread_on_query=False)
+    def test_malformed_input(self):
+        self.assertEqual(search_in_file("   "), "STRING NOT FOUND\n")
+
+if __name__ == "__main__":
+    unittest.main()
